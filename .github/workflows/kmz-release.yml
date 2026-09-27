@@ -1,0 +1,101 @@
+name: Weekly KMZ release
+
+on:
+  schedule:
+    - cron: '0 4 * * 0'
+      timezone: 'Europe/London'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: weekly-kmz-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish KMZ
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Resolve London date
+        id: meta
+        run: |
+          date="$(TZ=Europe/London date +%F)"
+          echo "date=$date" >> "$GITHUB_OUTPUT"
+          echo "tag=toilets-$date" >> "$GITHUB_OUTPUT"
+
+      - name: Skip if today's release already exists
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "$TAG is already published, nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "$TAG is not published yet, building it."
+          fi
+
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+
+      - name: Build KMZ
+        if: steps.meta.outputs.skip != 'true'
+        run: |
+          npm run build -- --out "dist/${{ steps.meta.outputs.tag }}.kmz" 2>&1 | tee build.log
+
+      - name: Upload KMZ artifact
+        if: steps.meta.outputs.skip != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: toilets-${{ steps.meta.outputs.date }}
+          path: dist/*.kmz
+          retention-days: 7
+
+      - name: Publish release
+        if: steps.meta.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+          DATE: ${{ steps.meta.outputs.date }}
+          REPO: ${{ github.repository }}
+        run: |
+          kmz="dist/$TAG.kmz"
+          test -s "$kmz" || { echo "::error::$kmz was not produced"; exit 1; }
+          download_url="https://github.com/$REPO/releases/download/$TAG/$TAG.kmz"
+          qgis_url="https://github.com/$REPO#qgis"
+          {
+            echo "KMZ bookmarks for toilets, built from the Toilet Map open dataset."
+            echo
+            echo "- **Download:** [$TAG.kmz]($download_url)"
+            echo "- Dataset: https://www.toiletmap.org.uk/dataset (CC BY 4.0)"
+            echo "- Contains data from the Toilet Map © 2025 – CC BY 4.0 – https://www.toiletmap.org.uk/dataset"
+            echo "- QGIS users: see [README](https://github.com/$REPO#qgis) for the colour helper and how to run it"
+            echo
+            echo '```'
+            cat build.log
+            echo '```'
+          } > notes.md
+          title="Toilet Map KMZ ($DATE)"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$kmz" --clobber
+            gh release edit "$TAG" --title "$title" --notes-file notes.md
+          else
+            gh release create "$TAG" "$kmz" --title "$title" --notes-file notes.md --target "$GITHUB_SHA"
+          fi
+          echo "Published $TAG"
+          echo "### $title" >> "$GITHUB_STEP_SUMMARY"
+          echo "[$TAG.kmz]($download_url)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat build.log >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report skipped run
+        if: steps.meta.outputs.skip == 'true'
+        run: echo "${{ steps.meta.outputs.tag }} is already published, nothing to do." >> "$GITHUB_STEP_SUMMARY"

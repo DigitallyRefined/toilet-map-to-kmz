@@ -1,0 +1,26 @@
+{
+  "name": "toilet-map-to-kmz",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Converts the Toilet Map open dataset into a KMZ file of placemark bookmarks.",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "toilet-map-to-kmz.mjs"
+  ],
+  "scripts": {
+    "build": "node toilet-map-to-kmz.mjs",
+    "start": "npm run build --",
+    "refresh": "node toilet-map-to-kmz.mjs --force",
+    "offline": "node toilet-map-to-kmz.mjs --offline",
+    "help": "node toilet-map-to-kmz.mjs --help"
+  },
+  "keywords": [
+    "kmz",
+    "kml",
+    "toilet-map",
+    "open-data"
+  ]
+}

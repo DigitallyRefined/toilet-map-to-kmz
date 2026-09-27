@@ -1,0 +1,5 @@
+data/
+*.kmz
+*.qml
+node_modules/
+__pycache__/
